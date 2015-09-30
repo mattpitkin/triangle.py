@@ -548,7 +548,7 @@ def format_exponents_in_label(fig):
         label = old_label.replace("[{}]".format(units), "")
         exponent_text = exponent_text.replace("\\times", "")
         if units == "":
-            s = r"{} $\left[{}\right]$".format(label, exponent_text.strip('$'))
+            s = r"{} [{}]".format(label, exponent_text)
         else:
             s = r"{} [{} {}]".format(label, exponent_text, units)
         s = s.replace("-", "\\textrm{-}")
