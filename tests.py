@@ -44,6 +44,9 @@ def test_hist2d():
     _run_hist2d("smooth2", bins=50, smooth=(1.0, 1.5))
     _run_hist2d("philsplot", plot_datapoints=False, fill_contours=True,
                 levels=[0.68, 0.95], color="g", bins=50, smooth=1.)
+    _run_hist2d("lowN", N=20)
+    _run_hist2d("lowNfilled", N=20, fill_contours=True)
+    _run_hist2d("lowNnofill", N=20, no_fill_contours=True)
 
 
 def _run_corner(nm, pandas=False, N=10000, seed=1234, ndim=3, ret=False,
@@ -83,8 +86,10 @@ def test_corner():
     _run_corner("overplot", seed=15, color="b", fig=fig, fill_contours=True)
     _run_corner("smooth1", bins=50)
     _run_corner("smooth2", bins=50, smooth=1.0)
-    # _run_corner("smooth1d", bins=50, smooth=1.0, smooth1d=1.0)
+    _run_corner("smooth1d", bins=50, smooth=1.0, smooth1d=1.0)
     _run_corner("titles1", show_titles=True)
+    _run_corner("titles2", show_titles=True, title_fmt=None,
+                labels=["a", "b", "c"])
     _run_corner("top-ticks", top_ticks=True)
     _run_corner("pandas", pandas=True)
     _run_corner("truths", truths=[0.0, None, 0.15])
