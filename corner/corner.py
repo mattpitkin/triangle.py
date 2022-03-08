@@ -5,7 +5,7 @@ from __future__ import print_function, absolute_import
 import logging
 import numpy as np
 import matplotlib.pyplot as pl
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import MaxNLocator, NullLocator
 from matplotlib.colors import LinearSegmentedColormap, colorConverter
 from matplotlib.ticker import ScalarFormatter
 
@@ -17,13 +17,13 @@ except ImportError:
 __all__ = ["corner", "hist2d", "quantile"]
 
 
-def corner(xs, bins=20, range=None, weights=None, color="k",
+def corner(xs, bins=20, range=None, weights=None, color="k", hist_bin_factor=1,
            smooth=None, smooth1d=None,
            labels=None, label_kwargs=None,
            show_titles=False, title_fmt=".2f", title_kwargs=None,
            truths=None, truth_color="#4682b4",
            scale_hist=False, quantiles=None, verbose=False, fig=None,
-           max_n_ticks=5, top_ticks=False, use_math_text=False,
+           max_n_ticks=5, top_ticks=False, use_math_text=False, reverse=False,
            hist_kwargs=None, **hist2d_kwargs):
     """
     Make a *sick* corner plot showing the projections of a data set in a
@@ -48,6 +48,12 @@ def corner(xs, bins=20, range=None, weights=None, color="k",
 
     color : str
         A ``matplotlib`` style color for all histograms.
+
+    hist_bin_factor : float or array_like[ndim,]
+        This is a factor (or list of factors, one for each dimension) that
+        will multiply the bin specifications when making the 1-D histograms.
+        This is generally used to increase the number of bins in the 1-D plots
+        to provide more resolution.
 
     smooth, smooth1d : float
        The standard deviation for Gaussian kernel passed to
@@ -105,6 +111,10 @@ def corner(xs, bins=20, range=None, weights=None, color="k",
     use_math_text : bool
         If true, then axis tick labels for very large or small exponents will
         be displayed as powers of 10 rather than using `e`.
+
+    reverse : bool
+        If true, plot the corner plot starting in the upper-right corner
+        instead of the usual bottom-left corner
 
     max_n_ticks: int
         Maximum number of ticks to try to use
@@ -192,12 +202,22 @@ def corner(xs, bins=20, range=None, weights=None, color="k",
     except TypeError:
         if len(bins) != len(range):
             raise ValueError("Dimension mismatch between bins and range")
+    try:
+        hist_bin_factor = [float(hist_bin_factor) for _ in range]
+    except TypeError:
+        if len(hist_bin_factor) != len(range):
+            raise ValueError("Dimension mismatch between hist_bin_factor and "
+                             "range")
 
     # Some magic numbers for pretty axis layout.
     K = len(xs)
     factor = 2.0           # size of one side of one panel
-    lbdim = 0.5 * factor   # size of left/bottom margin
-    trdim = 0.2 * factor   # size of top/right margin
+    if reverse:
+        lbdim = 0.2 * factor   # size of left/bottom margin
+        trdim = 0.5 * factor   # size of top/right margin
+    else:
+        lbdim = 0.5 * factor   # size of left/bottom margin
+        trdim = 0.2 * factor   # size of top/right margin
     whspace = 0.05         # w/hspace size
     plotdim = factor * K + factor * (K - 1.) * whspace
     dim = lbdim + plotdim + trdim
@@ -233,10 +253,14 @@ def corner(xs, bins=20, range=None, weights=None, color="k",
         if np.shape(xs)[0] == 1:
             ax = axes
         else:
-            ax = axes[i, i]
+            if reverse:
+                ax = axes[K-i-1, K-i-1]
+            else:
+                ax = axes[i, i]
         # Plot the histograms.
         if smooth1d is None:
-            n, _, _ = ax.hist(x, bins=bins[i], weights=weights,
+            bins_1d = int(max(1, np.round(hist_bin_factor[i] * bins[i])))
+            n, _, _ = ax.hist(x, bins=bins_1d, weights=weights,
                               range=np.sort(range[i]), **hist_kwargs)
         else:
             if gaussian_filter is None:
@@ -283,7 +307,10 @@ def corner(xs, bins=20, range=None, weights=None, color="k",
                 title = "{0}".format(labels[i])
 
             if title is not None:
-                ax.set_title(title, **title_kwargs)
+                if reverse:
+                    ax.set_xlabel(title, **title_kwargs)
+                else:
+                    ax.set_title(title, **title_kwargs)
 
         # Set up the axes.
         ax.set_xlim(range[i])
@@ -293,7 +320,12 @@ def corner(xs, bins=20, range=None, weights=None, color="k",
         else:
             ax.set_ylim(0, 1.1 * np.max(n))
         ax.set_yticklabels([])
-        ax.xaxis.set_major_locator(MaxNLocator(max_n_ticks, prune="lower"))
+        if max_n_ticks == 0:
+            ax.xaxis.set_major_locator(NullLocator())
+            ax.yaxis.set_major_locator(NullLocator())
+        else:
+            ax.xaxis.set_major_locator(MaxNLocator(max_n_ticks, prune="lower"))
+            ax.yaxis.set_major_locator(NullLocator())
 
         if i < K - 1:
             if top_ticks:
@@ -302,10 +334,14 @@ def corner(xs, bins=20, range=None, weights=None, color="k",
             else:
                 ax.set_xticklabels([])
         else:
+            if reverse:
+                ax.xaxis.tick_top()
             [l.set_rotation(45) for l in ax.get_xticklabels()]
             if labels is not None:
-                ax.set_xlabel(labels[i], **label_kwargs)
-                ax.xaxis.set_label_coords(0.5, -0.3)
+                if reverse:
+                    ax.set_title(labels[i], y=1.25, **label_kwargs)
+                else:
+                    ax.set_xlabel(labels[i], **label_kwargs)
 
             # use MathText for axes ticks
             ax.xaxis.set_major_formatter(
@@ -315,7 +351,10 @@ def corner(xs, bins=20, range=None, weights=None, color="k",
             if np.shape(xs)[0] == 1:
                 ax = axes
             else:
-                ax = axes[i, j]
+                if reverse:
+                    ax = axes[K-i-1, K-j-1]
+                else:
+                    ax = axes[i, j]
             if j > i:
                 ax.set_frame_on(False)
                 ax.set_xticks([])
@@ -340,16 +379,27 @@ def corner(xs, bins=20, range=None, weights=None, color="k",
                 if truths[i] is not None:
                     ax.axhline(truths[i], color=truth_color)
 
-            ax.xaxis.set_major_locator(MaxNLocator(max_n_ticks, prune="lower"))
-            ax.yaxis.set_major_locator(MaxNLocator(max_n_ticks, prune="lower"))
+            if max_n_ticks == 0:
+                ax.xaxis.set_major_locator(NullLocator())
+                ax.yaxis.set_major_locator(NullLocator())
+            else:
+                ax.xaxis.set_major_locator(MaxNLocator(max_n_ticks,
+                                                       prune="lower"))
+                ax.yaxis.set_major_locator(MaxNLocator(max_n_ticks,
+                                                       prune="lower"))
 
             if i < K - 1:
                 ax.set_xticklabels([])
             else:
+                if reverse:
+                    ax.xaxis.tick_top()
                 [l.set_rotation(45) for l in ax.get_xticklabels()]
                 if labels is not None:
                     ax.set_xlabel(labels[j], **label_kwargs)
-                    ax.xaxis.set_label_coords(0.5, -0.3)
+                    if reverse:
+                        ax.xaxis.set_label_coords(0.5, 1.4)
+                    else:
+                        ax.xaxis.set_label_coords(0.5, -0.3)
 
                 # use MathText for axes ticks
                 ax.xaxis.set_major_formatter(
@@ -358,10 +408,16 @@ def corner(xs, bins=20, range=None, weights=None, color="k",
             if j > 0:
                 ax.set_yticklabels([])
             else:
+                if reverse:
+                    ax.yaxis.tick_right()
                 [l.set_rotation(45) for l in ax.get_yticklabels()]
                 if labels is not None:
-                    ax.set_ylabel(labels[i], **label_kwargs)
-                    ax.yaxis.set_label_coords(-0.3, 0.5)
+                    if reverse:
+                        ax.set_ylabel(labels[i], rotation=-90, **label_kwargs)
+                        ax.yaxis.set_label_coords(1.3, 0.5)
+                    else:
+                        ax.set_ylabel(labels[i], **label_kwargs)
+                        ax.yaxis.set_label_coords(-0.3, 0.5)
 
                 # use MathText for axes ticks
                 ax.yaxis.set_major_formatter(
@@ -424,10 +480,12 @@ def quantile(x, q, weights=None):
 
 
 def hist2d(x, y, bins=20, range=None, weights=None, levels=None, smooth=None,
-           ax=None, color=None, plot_datapoints=True, plot_density=True,
+           ax=None, color=None, quiet=False,
+           plot_datapoints=True, plot_density=True,
            plot_contours=True, no_fill_contours=False, fill_contours=False,
            contour_kwargs=None, contourf_kwargs=None, data_kwargs=None,
-           **kwargs):
+           pcolor_kwargs=None, **kwargs):
+           
     """
     Plot a 2-D histogram of samples.
 
@@ -438,6 +496,9 @@ def hist2d(x, y, bins=20, range=None, weights=None, levels=None, smooth=None,
 
     y : array_like[nsamples,]
        The samples.
+
+    quiet : bool
+        If true, suppress warnings for small datasets.
 
     levels : array_like
         The contour levels to draw.
@@ -471,6 +532,10 @@ def hist2d(x, y, bins=20, range=None, weights=None, levels=None, smooth=None,
     data_kwargs : dict
         Any additional keyword arguments to pass to the `plot` method when
         adding the individual data points.
+
+    pcolor_kwargs : dict
+        Any additional keyword arguments to pass to the `pcolor` method when
+        adding the density colormap.
 
     """
     if ax is None:
@@ -524,51 +589,52 @@ def hist2d(x, y, bins=20, range=None, weights=None, levels=None, smooth=None,
             raise ImportError("Please install scipy for smoothing")
         H = gaussian_filter(H, smooth)
 
-    # Compute the density levels.
-    Hflat = H.flatten()
-    inds = np.argsort(Hflat)[::-1]
-    Hflat = Hflat[inds]
-    sm = np.cumsum(Hflat)
-    sm /= sm[-1]
-    V = np.empty(len(levels))
-    for i, v0 in enumerate(levels):
-        try:
-            V[i] = Hflat[sm <= v0][-1]
-        except:
-            V[i] = Hflat[0]
-    V.sort()
-    m = np.diff(V) == 0
-    if np.any(m):
-        logging.warning("Too few points to create valid contours")
-    while np.any(m):
-        V[np.where(m)[0][0]] *= 1.0 - 1e-4
+    if plot_contours or plot_density:
+        # Compute the density levels.
+        Hflat = H.flatten()
+        inds = np.argsort(Hflat)[::-1]
+        Hflat = Hflat[inds]
+        sm = np.cumsum(Hflat)
+        sm /= sm[-1]
+        V = np.empty(len(levels))
+        for i, v0 in enumerate(levels):
+            try:
+                V[i] = Hflat[sm <= v0][-1]
+            except:
+                V[i] = Hflat[0]
+        V.sort()
         m = np.diff(V) == 0
-    V.sort()
+        if np.any(m) and not quiet:
+            logging.warning("Too few points to create valid contours")
+        while np.any(m):
+            V[np.where(m)[0][0]] *= 1.0 - 1e-4
+            m = np.diff(V) == 0
+        V.sort()
 
-    # Compute the bin centers.
-    X1, Y1 = 0.5 * (X[1:] + X[:-1]), 0.5 * (Y[1:] + Y[:-1])
+        # Compute the bin centers.
+        X1, Y1 = 0.5 * (X[1:] + X[:-1]), 0.5 * (Y[1:] + Y[:-1])
 
-    # Extend the array for the sake of the contours at the plot edges.
-    H2 = H.min() + np.zeros((H.shape[0] + 4, H.shape[1] + 4))
-    H2[2:-2, 2:-2] = H
-    H2[2:-2, 1] = H[:, 0]
-    H2[2:-2, -2] = H[:, -1]
-    H2[1, 2:-2] = H[0]
-    H2[-2, 2:-2] = H[-1]
-    H2[1, 1] = H[0, 0]
-    H2[1, -2] = H[0, -1]
-    H2[-2, 1] = H[-1, 0]
-    H2[-2, -2] = H[-1, -1]
-    X2 = np.concatenate([
-        X1[0] + np.array([-2, -1]) * np.diff(X1[:2]),
-        X1,
-        X1[-1] + np.array([1, 2]) * np.diff(X1[-2:]),
-    ])
-    Y2 = np.concatenate([
-        Y1[0] + np.array([-2, -1]) * np.diff(Y1[:2]),
-        Y1,
-        Y1[-1] + np.array([1, 2]) * np.diff(Y1[-2:]),
-    ])
+        # Extend the array for the sake of the contours at the plot edges.
+        H2 = H.min() + np.zeros((H.shape[0] + 4, H.shape[1] + 4))
+        H2[2:-2, 2:-2] = H
+        H2[2:-2, 1] = H[:, 0]
+        H2[2:-2, -2] = H[:, -1]
+        H2[1, 2:-2] = H[0]
+        H2[-2, 2:-2] = H[-1]
+        H2[1, 1] = H[0, 0]
+        H2[1, -2] = H[0, -1]
+        H2[-2, 1] = H[-1, 0]
+        H2[-2, -2] = H[-1, -1]
+        X2 = np.concatenate([
+            X1[0] + np.array([-2, -1]) * np.diff(X1[:2]),
+            X1,
+            X1[-1] + np.array([1, 2]) * np.diff(X1[-2:]),
+        ])
+        Y2 = np.concatenate([
+            Y1[0] + np.array([-2, -1]) * np.diff(Y1[:2]),
+            Y1,
+            Y1[-1] + np.array([1, 2]) * np.diff(Y1[-2:]),
+        ])
 
     if plot_datapoints:
         if data_kwargs is None:
@@ -596,7 +662,9 @@ def hist2d(x, y, bins=20, range=None, weights=None, levels=None, smooth=None,
     # Plot the density map. This can't be plotted at the same time as the
     # contour fills.
     elif plot_density:
-        ax.pcolor(X, Y, H.max() - H.T, cmap=density_cmap)
+        if pcolor_kwargs is None:
+            pcolor_kwargs = dict()
+        ax.pcolor(X, Y, H.max() - H.T, cmap=density_cmap, **pcolor_kwargs)
 
     # Plot the contour edge colors.
     if plot_contours:
